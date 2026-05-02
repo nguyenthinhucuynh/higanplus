@@ -44,7 +44,7 @@ from typing import Optional
 import torch
 
 
-VALID_MODES = ("left_half", "left_three_quarter", "char_aligned")
+VALID_MODES = ("left_half", "left_three_quarter", "left_three_quarter_random", "char_aligned")
 PAD_VALUE = -1.0  # background convention used across HiGAN+ tensors
 
 
@@ -117,6 +117,16 @@ def _slice_for_sample(
 
     if mode == "left_three_quarter":
         keep = max(min_chars, (3 * lb_len + 3) // 4)
+        return 0, min(keep, lb_len)
+
+    if mode == "left_three_quarter_random":
+        # Random ratio in [0.60, 0.90] so G cannot predict which slice R will
+        # read and cannot cheat by concentrating OCR-friendly content in a
+        # fixed prefix.  Keeps the same ~75% mean as left_three_quarter but
+        # adds enough variance to break the deterministic exploit.
+        lo, hi = 0.60, 0.90
+        ratio = lo + (hi - lo) * float(torch.rand((), generator=generator).item())
+        keep = max(min_chars, round(ratio * lb_len))
         return 0, min(keep, lb_len)
 
     if mode == "char_aligned":
