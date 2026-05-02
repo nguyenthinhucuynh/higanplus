@@ -1,0 +1,16 @@
+numpy<2.0
+Pillow
+matplotlib
+tqdm
+PyYAML
+munch
+h5py
+tensorboard
+opencv-python
+scikit-image
+scipy
+distance
+einops
+# wandb is optional; the trainer no-ops cleanly when it is missing.  Listed
+# here so Kaggle / fresh installs pick it up without extra steps.
+wandb
