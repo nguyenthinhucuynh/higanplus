@@ -239,7 +239,17 @@ class StyleEncoder(nn.Module):
         mu = self.mu(style)
 
         # Enhanced style with masking heads
-        if self.use_masking and self.training:
+        masked_styles = None
+        if self.use_masking and self.training and ret_masked_styles:
+            vertical_style = self.vertical_head(feat, img_len, img_len_mask)
+            horizontal_style = self.horizontal_head(feat, img_len, img_len_mask)
+            masked_styles = (vertical_style, horizontal_style)
+
+            # Fuse base style with masked styles
+            combined_style = torch.cat([mu, vertical_style, horizontal_style], dim=-1)
+            mu = self.style_fusion(combined_style)
+        elif self.use_masking and self.training:
+            # Apply masking but don't return masked styles
             vertical_style = self.vertical_head(feat, img_len, img_len_mask)
             horizontal_style = self.horizontal_head(feat, img_len, img_len_mask)
 
@@ -250,18 +260,19 @@ class StyleEncoder(nn.Module):
         if vae_mode:
             logvar = self.logvar(style)
             style = self.reparameterize(mu, logvar)
-            style = (style, mu, logvar)
+            final_style = (style, mu, logvar)
         else:
-            style = mu
+            final_style = mu
 
-        if ret_feats:
-            if ret_masked_styles and self.use_masking and self.training:
-                return style, all_feats, (vertical_style, horizontal_style)
-            return style, all_feats
+        # Return based on flags
+        if ret_feats and ret_masked_styles and masked_styles is not None:
+            return final_style, all_feats, masked_styles
+        elif ret_feats:
+            return final_style, all_feats
+        elif ret_masked_styles and masked_styles is not None:
+            return final_style, masked_styles
         else:
-            if ret_masked_styles and self.use_masking and self.training:
-                return style, (vertical_style, horizontal_style)
-            return style
+            return final_style
 
     @staticmethod
     def reparameterize(mu, logvar):

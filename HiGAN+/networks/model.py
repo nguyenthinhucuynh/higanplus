@@ -831,20 +831,23 @@ class GlobalLocalAdversarialModel(AdversarialModel):
                     fake_imgs = self.models.G(self.z, fake_lbs, fake_lb_lens)
 
                     if self.vae_mode:
-                        (enc_z, mu, logvar), real_img_feats = self.models.E(real_imgs, real_img_lens, self.models.B,
-                                                                            ret_feats=True, vae_mode=True, ret_masked_styles=True)
-                        # Extract masked styles if available
-                        if isinstance(real_img_feats, tuple) and len(real_img_feats) == 2:
-                            masked_styles = real_img_feats[1]
-                            real_img_feats = real_img_feats[0]
+                        result = self.models.E(real_imgs, real_img_lens, self.models.B,
+                                              ret_feats=True, vae_mode=True, ret_masked_styles=True)
+                        if len(result) == 3:
+                            # (style_tuple, feats, masked_styles)
+                            (enc_z, mu, logvar), real_img_feats, masked_styles = result
                         else:
+                            # (style_tuple, feats) - no masking
+                            (enc_z, mu, logvar), real_img_feats = result
                             masked_styles = None
                     else:
                         result = self.models.E(real_imgs, real_img_lens, self.models.B,
                                               ret_feats=True, vae_mode=False, ret_masked_styles=True)
                         if len(result) == 3:
+                            # (style, feats, masked_styles)
                             enc_z, real_img_feats, masked_styles = result
                         else:
+                            # (style, feats) - no masking
                             enc_z, real_img_feats = result
                             masked_styles = None
                     style_imgs = self.models.G(enc_z, fake_lbs, fake_lb_lens)
