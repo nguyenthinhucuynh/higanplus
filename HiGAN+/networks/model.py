@@ -801,6 +801,21 @@ class GlobalLocalAdversarialModel(AdversarialModel):
                     style_imgs = self.models.G(enc_z, fake_lbs, fake_lb_lens)
                     recn_imgs = self.models.G(enc_z, real_lbs, real_lb_lens)
 
+                    # Apply structure-aware random masking to generated images (training only)
+                    masking_mode = getattr(self.opt.training, 'masking_mode', 'none')
+                    if masking_mode == 'vertical':
+                        fake_imgs = apply_vertical_stripe_mask(fake_imgs, fake_lb_lens * self.opt.char_width)
+                        style_imgs = apply_vertical_stripe_mask(style_imgs, fake_lb_lens * self.opt.char_width)
+                        recn_imgs = apply_vertical_stripe_mask(recn_imgs, real_lb_lens * self.opt.char_width)
+                    elif masking_mode == 'horizontal':
+                        fake_imgs = apply_horizontal_stripe_mask(fake_imgs, fake_lb_lens * self.opt.char_width)
+                        style_imgs = apply_horizontal_stripe_mask(style_imgs, fake_lb_lens * self.opt.char_width)
+                        recn_imgs = apply_horizontal_stripe_mask(recn_imgs, real_lb_lens * self.opt.char_width)
+                    elif masking_mode == 'combined':
+                        fake_imgs = apply_combined_stripe_mask(fake_imgs, fake_lb_lens * self.opt.char_width)
+                        style_imgs = apply_combined_stripe_mask(style_imgs, fake_lb_lens * self.opt.char_width)
+                        recn_imgs = apply_combined_stripe_mask(recn_imgs, real_lb_lens * self.opt.char_width)
+
                     ###################################################
                     # Calculating G Losses
                     ####################################################
