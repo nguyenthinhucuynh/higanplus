@@ -1,6 +1,5 @@
 import torch
 import numpy as np
-from copy import deepcopy
 
 # Utility file to seed rngs
 def seed_rng(seed):
@@ -50,8 +49,7 @@ class Distribution(torch.Tensor):
             device = self.device
             data = np.random.gamma(shape=1, scale=self.scale, size=self.size())
             self.data = torch.from_numpy(data).type(type).to(device)
-            # return self.variable
-        return deepcopy(self).detach()
+        return self
 
     # # Silly hack: overwrite the to() method to wrap the new object
     # # in a distribution as well
