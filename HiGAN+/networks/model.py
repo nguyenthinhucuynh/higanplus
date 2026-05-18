@@ -24,6 +24,13 @@ from networks.rand_dist import prepare_z_dist, prepare_y_dist
 from networks.loss import recn_l1_loss, CXLoss, KLloss
 from networks.masking import apply_vertical_stripe_mask, apply_horizontal_stripe_mask, apply_combined_stripe_mask
 
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+    print("wandb not installed, skipping wandb logging")
+
 
 class BaseModel(object):
     def __init__(self, opt, log_root='./'):
@@ -232,6 +239,8 @@ class AdversarialModel(BaseModel):
                 im.save(save_path)
                 if self.writer:
                     self.writer.add_image('Image', res_img.transpose((2, 0, 1)), iteration_done)
+                if WANDB_AVAILABLE and wandb.run is not None:
+                    wandb.log({'samples': wandb.Image(im)}, step=iteration_done)
             except RuntimeError as e:
                 print(e)
 
@@ -694,6 +703,27 @@ class GlobalLocalAdversarialModel(AdversarialModel):
 
         best_fid = np.inf
         iter_count = 0
+
+        # Initialize wandb if available
+        if WANDB_AVAILABLE and self.local_rank < 1:
+            masking_mode = getattr(self.opt.training, 'masking_mode', 'none')
+            experiment_name = f"gan_iam_{masking_mode}_masking" if masking_mode != 'none' else "gan_iam_baseline"
+            wandb.init(
+                project="higanplus-masking",
+                name=experiment_name,
+                config={
+                    "dataset": self.opt.dataset,
+                    "epochs": self.opt.training.epochs,
+                    "batch_size": self.opt.training.batch_size,
+                    "lr": self.opt.training.lr,
+                    "masking_mode": masking_mode,
+                    "vae_mode": self.opt.training.vae_mode,
+                    "lambda_kl": self.opt.training.lambda_kl,
+                    "lambda_ctx": self.opt.training.lambda_ctx,
+                    "style_dim": self.opt.EncModel.style_dim,
+                }
+            )
+
         for epoch in range(epoch_done, self.opt.training.epochs):
             for i, batch in enumerate(self.train_loader):
                 #############################
@@ -935,23 +965,28 @@ class GlobalLocalAdversarialModel(AdversarialModel):
                               meter_vals['recn_loss'], meter_vals['ctx_loss'], meter_vals['kl_loss'])
                     self.print(info) if self.local_rank < 1 else None
 
-                    if self.writer:
-                        for key, val in meter_vals.items():
-                            self.writer.add_scalar('loss/%s' % key, val,
-                                                   iter_count + 1) if self.local_rank < 1 else None
-
+                    if self.local_rank < 1:
                         try:
                             lr = self.lr_schedulers.G.get_last_lr()[0]
                         except Exception:
                             lr = self.lr_schedulers.G.get_lr()[0]
-                        self.writer.add_scalar('loss/lr', lr, iter_count + 1) if self.local_rank < 1 else None
 
-                        info_attns = self.models.G._info_attention()
-                        for i_, info in enumerate(info_attns):
-                            self.writer.add_scalar('loss/gamma%d' % i_, info['gamma'],
-                                                   iter_count + 1) if self.local_rank < 1 else None
-                            heatmap = plot_heatmap(info['out'])
-                            self.writer.add_image('attention/%d' % i_, heatmap.transpose((2, 0, 1)))
+                        if self.writer:
+                            for key, val in meter_vals.items():
+                                self.writer.add_scalar('loss/%s' % key, val, iter_count + 1)
+                            self.writer.add_scalar('loss/lr', lr, iter_count + 1)
+
+                            info_attns = self.models.G._info_attention()
+                            for i_, info in enumerate(info_attns):
+                                self.writer.add_scalar('loss/gamma%d' % i_, info['gamma'], iter_count + 1)
+                                heatmap = plot_heatmap(info['out'])
+                                self.writer.add_image('attention/%d' % i_, heatmap.transpose((2, 0, 1)))
+
+                        if WANDB_AVAILABLE and wandb.run is not None:
+                            wandb_log = {'iter': iter_count + 1, 'epoch': epoch, 'lr': lr}
+                            for key, val in meter_vals.items():
+                                wandb_log['loss/' + key] = val
+                            wandb.log(wandb_log, step=iter_count + 1)
 
                 if (iter_count + 1) % self.opt.training.sample_iter_val == 0:
                     if not (self.logger and self.writer):
@@ -979,15 +1014,25 @@ class GlobalLocalAdversarialModel(AdversarialModel):
                         best_fid = scores['fid']
                         self.save('best', epoch, **scores) if self.local_rank < 1 else None
 
-                    if self.writer:
-                        for key, val in scores.items():
-                            self.writer.add_scalar('valid/%s' % key, val, epoch) if self.local_rank < 1 else None
+                    if self.local_rank < 1:
+                        if self.writer:
+                            for key, val in scores.items():
+                                self.writer.add_scalar('valid/%s' % key, val, epoch)
+
+                        if WANDB_AVAILABLE and wandb.run is not None:
+                            wandb_scores = {'epoch': epoch}
+                            for key, val in scores.items():
+                                wandb_scores['valid/' + key] = val
+                            wandb.log(wandb_scores, step=iter_count + 1)
 
                 if self.local_rank > -1:
                     dist.barrier()
 
             for scheduler in self.lr_schedulers.values():
                 scheduler.step(epoch)
+
+        if WANDB_AVAILABLE and wandb.run is not None and self.local_rank < 1:
+            wandb.finish()
 
 
 class RecognizeModel(BaseModel):
