@@ -1,7 +1,7 @@
 import torch
 
 
-def apply_vertical_stripe_mask(imgs, img_lens, mask_ratio_range=(0.1, 0.3), stripe_width_range=(2, 8)):
+def apply_vertical_stripe_mask(imgs, img_lens, mask_ratio_range=(0.05, 0.15), stripe_width_range=(1, 4)):
     """
     Apply vertical stripe masking to generated images.
 
@@ -36,7 +36,7 @@ def apply_vertical_stripe_mask(imgs, img_lens, mask_ratio_range=(0.1, 0.3), stri
     return masked_imgs
 
 
-def apply_horizontal_stripe_mask(imgs, img_lens, mask_ratio_range=(0.1, 0.3), stripe_height_range=(2, 8)):
+def apply_horizontal_stripe_mask(imgs, img_lens, mask_ratio_range=(0.05, 0.15), stripe_height_range=(1, 4)):
     """
     Apply horizontal stripe masking to generated images.
 
@@ -69,8 +69,8 @@ def apply_horizontal_stripe_mask(imgs, img_lens, mask_ratio_range=(0.1, 0.3), st
     return masked_imgs
 
 
-def apply_combined_stripe_mask(imgs, img_lens, mask_ratio_range=(0.1, 0.3),
-                                stripe_width_range=(2, 8), stripe_height_range=(2, 8)):
+def apply_combined_stripe_mask(imgs, img_lens, mask_ratio_range=(0.05, 0.15),
+                                stripe_width_range=(1, 4), stripe_height_range=(1, 4)):
     """
     Apply both vertical and horizontal stripe masking to generated images.
 
