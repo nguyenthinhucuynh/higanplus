@@ -817,29 +817,32 @@ class GlobalLocalAdversarialModel(AdversarialModel):
                     self.z.sample_()
                     fake_imgs = self.models.G(self.z, fake_lbs, fake_lb_lens)
 
-                    if self.vae_mode:
-                        (enc_z, mu, logvar), real_img_feats = self.models.E(real_imgs, real_img_lens, self.models.B,
-                                                                            ret_feats=True, vae_mode=True)
-                    else:
-                        enc_z, real_img_feats = self.models.E(real_imgs, real_img_lens, self.models.B,
-                                                              ret_feats=True, vae_mode=False)
-                    style_imgs = self.models.G(enc_z, fake_lbs, fake_lb_lens)
-                    recn_imgs = self.models.G(enc_z, real_lbs, real_lb_lens)
-
-                    # Apply structure-aware random masking to generated images (training only)
+                    # Apply masking to real_imgs before style encoder to force robust style learning
                     masking_mode = getattr(self.opt.training, 'masking_mode', 'none')
                     if masking_mode == 'vertical':
-                        fake_imgs = apply_vertical_stripe_mask(fake_imgs, fake_lb_lens * self.opt.char_width)
-                        style_imgs = apply_vertical_stripe_mask(style_imgs, fake_lb_lens * self.opt.char_width)
-                        recn_imgs = apply_vertical_stripe_mask(recn_imgs, real_lb_lens * self.opt.char_width)
+                        masked_real_imgs = apply_vertical_stripe_mask(real_imgs, real_img_lens)
                     elif masking_mode == 'horizontal':
-                        fake_imgs = apply_horizontal_stripe_mask(fake_imgs, fake_lb_lens * self.opt.char_width)
-                        style_imgs = apply_horizontal_stripe_mask(style_imgs, fake_lb_lens * self.opt.char_width)
-                        recn_imgs = apply_horizontal_stripe_mask(recn_imgs, real_lb_lens * self.opt.char_width)
+                        masked_real_imgs = apply_horizontal_stripe_mask(real_imgs, real_img_lens)
                     elif masking_mode == 'combined':
-                        fake_imgs = apply_combined_stripe_mask(fake_imgs, fake_lb_lens * self.opt.char_width)
-                        style_imgs = apply_combined_stripe_mask(style_imgs, fake_lb_lens * self.opt.char_width)
-                        recn_imgs = apply_combined_stripe_mask(recn_imgs, real_lb_lens * self.opt.char_width)
+                        masked_real_imgs = apply_combined_stripe_mask(real_imgs, real_img_lens)
+                    else:
+                        masked_real_imgs = real_imgs
+
+                    # Encode masked images to get style vector (forces robust style learning)
+                    if self.vae_mode:
+                        enc_z, mu, logvar = self.models.E(masked_real_imgs, real_img_lens, self.models.B,
+                                                          ret_feats=False, vae_mode=True)
+                        # Encode clean images to get features for contextual loss
+                        _, real_img_feats = self.models.E(real_imgs, real_img_lens, self.models.B,
+                                                         ret_feats=True, vae_mode=False)
+                    else:
+                        enc_z = self.models.E(masked_real_imgs, real_img_lens, self.models.B,
+                                             ret_feats=False, vae_mode=False)
+                        # Encode clean images to get features for contextual loss
+                        _, real_img_feats = self.models.E(real_imgs, real_img_lens, self.models.B,
+                                                         ret_feats=True, vae_mode=False)
+                    style_imgs = self.models.G(enc_z, fake_lbs, fake_lb_lens)
+                    recn_imgs = self.models.G(enc_z, real_lbs, real_lb_lens)
 
                     ###################################################
                     # Calculating G Losses
