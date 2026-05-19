@@ -1003,25 +1003,34 @@ class GlobalLocalAdversarialModel(AdversarialModel):
                     os.makedirs(ckpt_root)
 
                 self.save('last', epoch)
-                if epoch >= self.opt.training.start_save_epoch_val and \
-                        epoch % self.opt.training.save_epoch_val == 0:
-                    self.print('Calculate FID_KID') if self.local_rank < 1 else None
-                    scores = self.validate()
 
-                    if 'fid' in scores and scores['fid'] < best_fid:
-                        best_fid = scores['fid']
-                        self.save('best', epoch, **scores) if self.local_rank < 1 else None
+                # Calculate FID/KID every epoch
+                self.print(f'[Epoch {epoch}/{self.opt.training.epochs}] Calculating FID/KID...') if self.local_rank < 1 else None
+                scores = self.validate()
 
-                    if self.local_rank < 1:
-                        if self.writer:
-                            for key, val in scores.items():
-                                self.writer.add_scalar('valid/%s' % key, val, epoch)
+                # Print FID/KID scores
+                if self.local_rank < 1:
+                    fid_val = scores.get('fid', -1)
+                    kid_val = scores.get('kid', -1)
+                    self.print(f'[Epoch {epoch}/{self.opt.training.epochs}] FID: {fid_val:.4f}, KID: {kid_val:.6f}')
 
-                        if WANDB_AVAILABLE and wandb.run is not None:
-                            wandb_scores = {'epoch': epoch}
-                            for key, val in scores.items():
-                                wandb_scores['valid/' + key] = val
-                            wandb.log(wandb_scores, step=iter_count + 1)
+                # Save best model based on FID
+                if 'fid' in scores and scores['fid'] < best_fid:
+                    best_fid = scores['fid']
+                    self.print(f'[Epoch {epoch}] New best FID: {best_fid:.4f} - Saving best checkpoint') if self.local_rank < 1 else None
+                    self.save('best', epoch, **scores) if self.local_rank < 1 else None
+
+                # Log to tensorboard and wandb
+                if self.local_rank < 1:
+                    if self.writer:
+                        for key, val in scores.items():
+                            self.writer.add_scalar('valid/%s' % key, val, epoch)
+
+                    if WANDB_AVAILABLE and wandb.run is not None:
+                        wandb_scores = {'epoch': epoch}
+                        for key, val in scores.items():
+                            wandb_scores['valid/' + key] = val
+                        wandb.log(wandb_scores, step=iter_count + 1)
 
                 if self.local_rank > -1:
                     dist.barrier()
